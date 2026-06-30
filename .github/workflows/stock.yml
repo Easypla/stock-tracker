@@ -1,0 +1,29 @@
+name: 台股收盤價抓取
+
+on:
+  schedule:
+    # 台灣時間 13:35 = UTC 05:35
+    - cron: '35 5 * * 1-5'  # 週一到週五
+  workflow_dispatch:  # 允許手動觸發
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python 套件
+        run: pip install yfinance
+
+      - name: 抓取收盤價
+        run: python fetch_stock_close.py
+
+      - name: Commit stock_prices.txt
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add stock_prices.txt
+          git diff --staged --quiet || git commit -m "📈 收盤價更新 $(date '+%Y-%m-%d')"
+          git push
