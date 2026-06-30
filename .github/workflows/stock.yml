@@ -18,6 +18,8 @@ jobs:
         run: pip install yfinance
 
       - name: 抓取收盤價
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python fetch_stock_close.py
 
       - name: Commit stock_prices.txt
