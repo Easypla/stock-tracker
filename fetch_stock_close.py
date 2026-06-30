@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 台股每日收盤價抓取腳本
-- 持股清單直接從 TICKER_MAP 讀取（GitHub Actions 環境）
+- 從 holdings.txt 讀取持股清單（新增/刪除持股只需改這個檔案）
 - 抓取當日收盤價
 - 存成 stock_prices.txt，commit 回 GitHub repo
 - 透過 Discord Webhook 通知成功與否
@@ -15,37 +15,43 @@ import urllib.error
 import json
 
 # ── 設定區 ──────────────────────────────────────────────
-OUTPUT_PATH = "stock_prices.txt"
+HOLDINGS_PATH = "holdings.txt"   # 持股清單
+OUTPUT_PATH   = "stock_prices.txt"  # 收盤價輸出
 
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1520449880307273821/CBrShP4nh2532BizcMLxkaC1_9tRPUKdMNInmwiR1k4Dme8gks4U-mlK0I7z8mmZ1QDV"
-
-# 股票名稱 → Yahoo Finance ticker 對照表
-# ⚠️ 新增或賣出持股時，手動更新這裡
-TICKER_MAP = {
-    "群創":          "3481.TW",
-    "頎邦":          "6147.TWO",
-    "聯發科":        "2454.TW",
-    "愛普":          "6531.TW",
-    "新日興":        "3376.TW",
-    "采鈺":          "6789.TW",
-    "鈦昇":          "8027.TWO",
-    "華通":          "2313.TW",
-    "昇達科":        "3491.TWO",
-    "兆赫":          "2485.TW",
-    "鼎元":          "2426.TW",
-    "創惟":          "6104.TWO",
-    "智原":          "3035.TW",
-    "嘉澤":          "3533.TW",
-    "祥碩":          "5269.TW",
-    "正達":          "3149.TW",
-    "凌華":          "6166.TW",
-    "元大台灣50正2": "00631L.TW",
-}
+# Discord Webhook 從環境變數讀取（存在 GitHub Secrets）
+DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
 # ────────────────────────────────────────────────────────
+
+
+def load_holdings():
+    """
+    從 holdings.txt 讀取持股清單
+    格式每行：股票名稱,ticker
+    例如：聯發科,2454.TW
+    """
+    if not os.path.exists(HOLDINGS_PATH):
+        print(f"❌ 找不到 {HOLDINGS_PATH}")
+        return {}
+
+    holdings = {}
+    with open(HOLDINGS_PATH, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(",")
+            if len(parts) == 2:
+                name, ticker = parts[0].strip(), parts[1].strip()
+                holdings[name] = ticker
+
+    return holdings
 
 
 def send_discord(message):
     """發送 Discord 通知"""
+    if not DISCORD_WEBHOOK:
+        print("⚠️  DISCORD_WEBHOOK 未設定，跳過通知")
+        return
     try:
         payload = json.dumps({"content": message}).encode("utf-8")
         req = urllib.request.Request(
@@ -65,15 +71,15 @@ def send_discord(message):
         print(f"Discord 通知失敗：{e}")
 
 
-def fetch_prices():
+def fetch_prices(ticker_map):
     """抓取所有持倉的收盤價"""
-    tickers = list(TICKER_MAP.values())
+    tickers = list(ticker_map.values())
     data = yf.download(tickers, period="2d", progress=False, auto_adjust=True)
 
     success = {}
     failed  = []
 
-    for name, ticker in TICKER_MAP.items():
+    for name, ticker in ticker_map.items():
         try:
             series = data["Close"] if len(tickers) == 1 else data["Close"][ticker]
             close  = round(float(series.dropna().iloc[-1]), 2)
@@ -102,9 +108,17 @@ if __name__ == "__main__":
     print("=" * 45)
     print(f"  台股收盤價抓取  {today}")
     print("=" * 45)
-    print(f"\n📡 抓取 {len(TICKER_MAP)} 支股票收盤價...")
 
-    prices, failed = fetch_prices()
+    ticker_map = load_holdings()
+    if not ticker_map:
+        send_discord("❌ 台股收盤價更新失敗\n找不到持股清單 holdings.txt")
+        exit(1)
+
+    print(f"\n📋 持股清單（{len(ticker_map)} 支）：{list(ticker_map.keys())}")
+    print(f"\n📡 抓取收盤價...")
+
+    prices, failed = fetch_prices(ticker_map)
+
     if prices:
         save_txt(prices)
 
