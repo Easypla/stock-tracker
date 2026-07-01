@@ -2,9 +2,8 @@ name: 台股收盤價抓取
 
 on:
   schedule:
-    # 台灣時間 13:35 = UTC 05:35
-    - cron: '35 5 * * 1-5'  # 週一到週五
-  workflow_dispatch:  # 允許手動觸發
+    - cron: '35 5 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   fetch:
